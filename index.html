@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tiny Planet Maker Pro</title>
+  <style>
+    :root {
+      --bg: #121212;
+      --card: #1e1e1e;
+      --accent: #bb86fc;
+      --text: #ffffff;
+      --text-dim: #aaaaaa;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+      margin: 0;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+
+    h2 {
+      margin: 0 0 15px 0;
+      font-weight: 600;
+      letter-spacing: -0.5px;
+    }
+
+    .controls-panel {
+      background: var(--card);
+      padding: 20px;
+      border-radius: 16px;
+      width: 100%;
+      max-width: 480px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+      margin-bottom: 20px;
+    }
+
+    .file-input-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    input[type="file"] {
+      color: var(--text-dim);
+      width: 100%;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .control-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.9rem;
+      color: var(--text-dim);
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 0;
+    }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+
+    .checkbox-label input {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent);
+    }
+
+    .btn-download {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      padding: 12px 20px;
+      font-size: 1rem;
+      font-weight: 600;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+      width: 100%;
+      margin-top: 5px;
+    }
+
+    .btn-download:active {
+      transform: scale(0.98);
+    }
+
+    .btn-download:disabled {
+      background: #444;
+      color: #888;
+      cursor: not-allowed;
+    }
+
+    canvas {
+      width: 100%;
+      max-width: 480px;
+      height: auto;
+      aspect-ratio: 1 / 1;
+      background: #000;
+      border-radius: 16px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Tiny Planet Studio</h2>
+
+  <div class="controls-panel">
+    <div class="file-input-wrapper">
+      <input type="file" id="upload" accept="image/*">
+    </div>
+
+    <!-- Rotation Slider -->
+    <div class="control-group">
+      <div class="control-label">
+        <span>Rotation</span>
+        <span id="rotationVal">0°</span>
+      </div>
+      <input type="range" id="rotation" min="0" max="360" value="0">
+    </div>
+
+    <!-- Zoom Slider -->
+    <div class="control-group">
+      <div class="control-label">
+        <span>Zoom</span>
+        <span id="zoomVal">1.0x</span>
+      </div>
+      <input type="range" id="zoom" min="0.5" max="2.5" step="0.05" value="1.0">
+    </div>
+
+    <!-- Center Bulge / Pinch Slider -->
+    <div class="control-group">
+      <div class="control-label">
+        <span>Center Bulge</span>
+        <span id="bulgeVal">0 (Normal)</span>
+      </div>
+      <input type="range" id="bulge" min="-1" max="1" step="0.05" value="0">
+    </div>
+
+    <!-- Invert Toggle -->
+    <div class="toggle-row">
+      <label class="checkbox-label">
+        <input type="checkbox" id="invertToggle">
+        Invert Projection (Tunnel Mode)
+      </label>
+    </div>
+
+    <!-- Save / Download Button -->
+    <button id="downloadBtn" class="btn-download" disabled>Save Tiny Planet</button>
+  </div>
+
+  <canvas id="canvas" width="1200" height="1200"></canvas>
+
+  <script>
+    const upload = document.getElementById('upload');
+    const rotationInput = document.getElementById('rotation');
+    const zoomInput = document.getElementById('zoom');
+    const bulgeInput = document.getElementById('bulge');
+    const invertToggle = document.getElementById('invertToggle');
+    const downloadBtn = document.getElementById('downloadBtn');
+
+    const rotationVal = document.getElementById('rotationVal');
+    const zoomVal = document.getElementById('zoomVal');
+    const bulgeVal = document.getElementById('bulgeVal');
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    let currentImg = null;
+    const CANVAS_SIZE = 1200;
+
+    upload.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const img = new Image();
+      img.onload = () => {
+        currentImg = img;
+        downloadBtn.disabled = false;
+        render();
+      };
+      img.src = URL.createObjectURL(file);
+    });
+
+    [rotationInput, zoomInput, bulgeInput, invertToggle].forEach(control => {
+      control.addEventListener('input', () => {
+        updateLabels();
+        if (currentImg) render();
+      });
+    });
+
+    function updateLabels() {
+      rotationVal.textContent = `${rotationInput.value}°`;
+      zoomVal.textContent = `${parseFloat(zoomInput.value).toFixed(2)}x`;
+      
+      const bVal = parseFloat(bulgeInput.value);
+      if (bVal === 0) bulgeVal.textContent = "0 (Normal)";
+      else if (bVal > 0) bulgeVal.textContent = `+${Math.round(bVal * 100)}% Bulge`;
+      else bulgeVal.textContent = `${Math.round(bVal * 100)}% Pinch`;
+    }
+
+    function render() {
+      if (!currentImg) return;
+
+      canvas.width = CANVAS_SIZE;
+      canvas.height = CANVAS_SIZE;
+
+      const rotationRad = (parseFloat(rotationInput.value) * Math.PI) / 180;
+      const zoom = parseFloat(zoomInput.value);
+      const bulge = parseFloat(bulgeInput.value); // -1 to +1
+      const isInverted = invertToggle.checked;
+
+      // Map slider value (-1 to 1) to an exponent power (0.33 to 3.0)
+      // Positive bulge uses power < 1 to swell center, negative uses power > 1 to pinch center
+      const power = bulge >= 0 ? 1 / (1 + bulge * 2) : (1 - bulge * 2);
+
+      const offCanvas = document.createElement('canvas');
+      offCanvas.width = currentImg.width;
+      offCanvas.height = currentImg.height;
+      const offCtx = offCanvas.getContext('2d');
+      offCtx.drawImage(currentImg, 0, 0);
+
+      const srcData = offCtx.getImageData(0, 0, currentImg.width, currentImg.height).data;
+      const outImageData = ctx.createImageData(CANVAS_SIZE, CANVAS_SIZE);
+      const outData = outImageData.data;
+
+      const cx = CANVAS_SIZE / 2;
+      const cy = CANVAS_SIZE / 2;
+      const maxRadius = (CANVAS_SIZE / 2) / zoom;
+
+      for (let y = 0; y < CANVAS_SIZE; y++) {
+        for (let x = 0; x < CANVAS_SIZE; x++) {
+          const dx = x - cx;
+          const dy = y - cy;
+
+          const distance = Math.sqrt(dx * dx + dy * dy);
+
+          if (distance <= maxRadius) {
+            let angle = Math.atan2(dy, dx) - rotationRad;
+            angle = angle % (2 * Math.PI);
+            if (angle < 0) angle += 2 * Math.PI;
+
+            // Normalized radius from 0 to 1
+            const normDist = distance / maxRadius;
+
+            // Apply power curve for bulge/pinch warp
+            const warpedRadius = Math.pow(normDist, power);
+
+            const finalRadius = isInverted
+              ? (1 - warpedRadius)
+              : warpedRadius;
+
+            const srcX = Math.floor((angle / (2 * Math.PI)) * currentImg.width);
+            const srcY = Math.floor(Math.min(Math.max(finalRadius, 0), 0.999) * currentImg.height);
+
+            const srcIdx = (srcY * currentImg.width + srcX) * 4;
+            const outIdx = (y * CANVAS_SIZE + x) * 4;
+
+            outData[outIdx]     = srcData[srcIdx];     // R
+            outData[outIdx + 1] = srcData[srcIdx + 1]; // G
+            outData[outIdx + 2] = srcData[srcIdx + 2]; // B
+            outData[outIdx + 3] = srcData[srcIdx + 3]; // A
+          }
+        }
+      }
+
+      ctx.putImageData(outImageData, 0, 0);
+    }
+
+    downloadBtn.addEventListener('click', () => {
+      if (!currentImg) return;
+      const link = document.createElement('a');
+      link.download = `tiny-planet-${Date.now()}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    });
+  </script>
+</body>
+</html>
