@@ -130,6 +130,18 @@
       border-radius: 16px;
       box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
     }
+
+    /* Dynamic background grid to highlight transparency in preview */
+    canvas.transparent-bg {
+      background-color: #1e1e1e;
+      background-image: 
+        linear-gradient(45deg, #2a2a2a 25%, transparent 25%), 
+        linear-gradient(-45deg, #2a2a2a 25%, transparent 25%), 
+        linear-gradient(45deg, transparent 75%, #2a2a2a 75%), 
+        linear-gradient(-45deg, transparent 75%, #2a2a2a 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+    }
   </style>
 </head>
 <body>
@@ -176,11 +188,19 @@
       </label>
     </div>
 
+    <!-- Transparent Background Toggle -->
+    <div class="toggle-row">
+      <label class="checkbox-label">
+        <input type="checkbox" id="transparentToggle" checked>
+        Transparent Outer Background
+      </label>
+    </div>
+
     <!-- Save / Download Button -->
-    <button id="downloadBtn" class="btn-download" disabled>Save Tiny Planet</button>
+    <button id="downloadBtn" class="btn-download" disabled>Save PNG (Transparent)</button>
   </div>
 
-  <canvas id="canvas" width="1200" height="1200"></canvas>
+  <canvas id="canvas" class="transparent-bg" width="1200" height="1200"></canvas>
 
   <script>
     const upload = document.getElementById('upload');
@@ -188,6 +208,7 @@
     const zoomInput = document.getElementById('zoom');
     const bulgeInput = document.getElementById('bulge');
     const invertToggle = document.getElementById('invertToggle');
+    const transparentToggle = document.getElementById('transparentToggle');
     const downloadBtn = document.getElementById('downloadBtn');
 
     const rotationVal = document.getElementById('rotationVal');
@@ -213,7 +234,7 @@
       img.src = URL.createObjectURL(file);
     });
 
-    [rotationInput, zoomInput, bulgeInput, invertToggle].forEach(control => {
+    [rotationInput, zoomInput, bulgeInput, invertToggle, transparentToggle].forEach(control => {
       control.addEventListener('input', () => {
         updateLabels();
         if (currentImg) render();
@@ -228,6 +249,15 @@
       if (bVal === 0) bulgeVal.textContent = "0 (Normal)";
       else if (bVal > 0) bulgeVal.textContent = `+${Math.round(bVal * 100)}% Bulge`;
       else bulgeVal.textContent = `${Math.round(bVal * 100)}% Pinch`;
+
+      // Update canvas CSS styling to show transparency grid
+      if (transparentToggle.checked) {
+        canvas.classList.add('transparent-bg');
+        downloadBtn.textContent = 'Save PNG (Transparent)';
+      } else {
+        canvas.classList.remove('transparent-bg');
+        downloadBtn.textContent = 'Save PNG (Black Background)';
+      }
     }
 
     function render() {
@@ -236,13 +266,14 @@
       canvas.width = CANVAS_SIZE;
       canvas.height = CANVAS_SIZE;
 
+      ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
       const rotationRad = (parseFloat(rotationInput.value) * Math.PI) / 180;
       const zoom = parseFloat(zoomInput.value);
-      const bulge = parseFloat(bulgeInput.value); // -1 to +1
+      const bulge = parseFloat(bulgeInput.value);
       const isInverted = invertToggle.checked;
+      const isTransparent = transparentToggle.checked;
 
-      // Map slider value (-1 to 1) to an exponent power (0.33 to 3.0)
-      // Positive bulge uses power < 1 to swell center, negative uses power > 1 to pinch center
       const power = bulge >= 0 ? 1 / (1 + bulge * 2) : (1 - bulge * 2);
 
       const offCanvas = document.createElement('canvas');
@@ -263,34 +294,40 @@
         for (let x = 0; x < CANVAS_SIZE; x++) {
           const dx = x - cx;
           const dy = y - cy;
-
           const distance = Math.sqrt(dx * dx + dy * dy);
+
+          const outIdx = (y * CANVAS_SIZE + x) * 4;
 
           if (distance <= maxRadius) {
             let angle = Math.atan2(dy, dx) - rotationRad;
             angle = angle % (2 * Math.PI);
             if (angle < 0) angle += 2 * Math.PI;
 
-            // Normalized radius from 0 to 1
             const normDist = distance / maxRadius;
-
-            // Apply power curve for bulge/pinch warp
             const warpedRadius = Math.pow(normDist, power);
 
-            const finalRadius = isInverted
-              ? (1 - warpedRadius)
-              : warpedRadius;
+            const finalRadius = isInverted ? (1 - warpedRadius) : warpedRadius;
 
             const srcX = Math.floor((angle / (2 * Math.PI)) * currentImg.width);
             const srcY = Math.floor(Math.min(Math.max(finalRadius, 0), 0.999) * currentImg.height);
 
             const srcIdx = (srcY * currentImg.width + srcX) * 4;
-            const outIdx = (y * CANVAS_SIZE + x) * 4;
 
             outData[outIdx]     = srcData[srcIdx];     // R
             outData[outIdx + 1] = srcData[srcIdx + 1]; // G
             outData[outIdx + 2] = srcData[srcIdx + 2]; // B
             outData[outIdx + 3] = srcData[srcIdx + 3]; // A
+          } else {
+            if (!isTransparent) {
+              // Solid black outer space
+              outData[outIdx]     = 0;   // R
+              outData[outIdx + 1] = 0;   // G
+              outData[outIdx + 2] = 0;   // B
+              outData[outIdx + 3] = 255; // A
+            } else {
+              // Explicitly transparent
+              outData[outIdx + 3] = 0;   // Alpha = 0
+            }
           }
         }
       }
